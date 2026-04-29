@@ -1,0 +1,227 @@
+// Prisma schema for Compta Companion
+// Local: SQLite. Switch provider to "postgresql" for Supabase deploy.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth (NextAuth) ----------
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+
+  accounts      Account[]
+  sessions      Session[]
+  courses       Course[]
+  studySessions StudySession[]
+  reviews       Review[]
+  preferences   UserPreference?
+  dailyLogs     DailyLog[]
+}
+
+model UserPreference {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examDate        DateTime?
+  dailyGoalMin    Int       @default(15) // minutes par jour
+  dailyGoalCards  Int       @default(20) // cartes par jour
+  reminderTime    String? // HH:mm pour rappel
+  driveRootFolder String? // ID du dossier Drive racine
+  preferredModel  String    @default("claude-sonnet-4-6")
+  updatedAt       DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------- Cours ----------
+model Course {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  driveFolderId String?
+  color         String   @default("#6366f1")
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  chapters Chapter[]
+
+  @@index([userId])
+}
+
+model Chapter {
+  id            String   @id @default(cuid())
+  courseId      String
+  course        Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title         String
+  driveFolderId String?
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  documents  Document[]
+  summary    Summary?
+  flashcards Flashcard[]
+  quizzes    Quiz[]
+
+  @@index([courseId])
+}
+
+model Document {
+  id           String    @id @default(cuid())
+  chapterId    String
+  chapter      Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  driveFileId  String    @unique
+  name         String
+  mimeType     String
+  modifiedTime DateTime?
+  rawText      String? // texte extrait
+  processedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([chapterId])
+}
+
+// ---------- Contenu généré ----------
+model Summary {
+  id          String   @id @default(cuid())
+  chapterId   String   @unique
+  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  short       String // résumé court (TL;DR)
+  full        String // fiche détaillée (Markdown)
+  keyPoints   String // JSON string array
+  glossary    String? // JSON [{term, definition}]
+  generatedAt DateTime @default(now())
+  edited      Boolean  @default(false)
+}
+
+model Flashcard {
+  id         String   @id @default(cuid())
+  chapterId  String
+  chapter    Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  question   String
+  answer     String
+  hint       String?
+  difficulty String   @default("medium") // easy | medium | hard
+  tags       String? // JSON string array
+  createdAt  DateTime @default(now())
+  edited     Boolean  @default(false)
+
+  // SM-2 fields (par utilisateur via Review, mais on garde stats globales)
+  reviews Review[]
+
+  @@index([chapterId])
+}
+
+model Quiz {
+  id          String   @id @default(cuid())
+  chapterId   String
+  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  type        String // mcq | case
+  question    String
+  choices     String? // JSON pour MCQ
+  answer      String // bonne réponse / correction
+  explanation String?
+  createdAt   DateTime @default(now())
+
+  @@index([chapterId])
+}
+
+// ---------- Étude / SRS ----------
+model StudySession {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  durationSec Int       @default(0)
+  cardsSeen   Int       @default(0)
+  cardsRight  Int       @default(0)
+  cardsWrong  Int       @default(0)
+  mode        String    @default("flashcards") // flashcards | quiz | mixed | quick5
+  reviews     Review[]
+
+  @@index([userId])
+}
+
+model Review {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flashcardId String
+  flashcard   Flashcard     @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+  sessionId   String?
+  session     StudySession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  // SM-2 state (par user/card)
+  ease           Float     @default(2.5)
+  interval       Int       @default(0) // jours
+  repetitions    Int       @default(0)
+  dueAt          DateTime  @default(now())
+  lastQuality    Int? // 0-5
+  lastReviewedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([userId, flashcardId])
+  @@index([userId, dueAt])
+}
+
+model DailyLog {
+  id         String  @id @default(cuid())
+  userId     String
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date       String // YYYY-MM-DD (local)
+  minutes    Int     @default(0)
+  cardsSeen  Int     @default(0)
+  cardsRight Int     @default(0)
+  cardsWrong Int     @default(0)
+  goalMet    Boolean @default(false)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
