@@ -20,6 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { Markdown } from "@/components/markdown";
 
 type CardItem = {
   id: string;
@@ -46,13 +47,20 @@ export function StudySession({
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [stats, setStats] = useState<{ right: number; wrong: number; perChapter: Record<string, { right: number; wrong: number; title: string }> }>({
+  const [stats, setStats] = useState<{
+    right: number;
+    wrong: number;
+    perChapter: Record<string, { right: number; wrong: number; title: string }>;
+    wrongCards: { id: string; question: string; chapterTitle: string }[];
+  }>({
     right: 0,
     wrong: 0,
     perChapter: {},
+    wrongCards: [],
   });
   const [done, setDone] = useState(false);
   const startRef = useRef<number>(Date.now());
+  const [hintShown, setHintShown] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +111,12 @@ export function StudySession({
           wrong: (stats.perChapter[current.chapter.id]?.wrong ?? 0) + (isWrong ? 1 : 0),
         },
       },
+      wrongCards: isWrong
+        ? [
+            ...stats.wrongCards,
+            { id: current.id, question: current.question, chapterTitle: current.chapter.title },
+          ]
+        : stats.wrongCards,
     };
     setStats(nextStats);
 
@@ -118,6 +132,7 @@ export function StudySession({
     } else {
       setIdx(idx + 1);
       setFlipped(false);
+      setHintShown(false);
     }
   }
 
@@ -211,29 +226,81 @@ export function StudySession({
 
         <Card>
           <CardHeader>
-            <CardTitle>Détail par chapitre</CardTitle>
-            <CardDescription>Là où tu as réussi, là où tu as buté.</CardDescription>
+            <CardTitle>Performance par chapitre</CardTitle>
+            <CardDescription>
+              {weakestChapter(stats.perChapter)
+                ? `Point faible : ${weakestChapter(stats.perChapter)}`
+                : "Beau travail, rien ne ressort comme point faible."}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
-              {Object.entries(stats.perChapter).map(([id, s]) => {
-                const t = s.right + s.wrong;
-                const a = t ? Math.round((s.right / t) * 100) : 0;
-                return (
-                  <li key={id} className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium">{s.title}</span>
-                      <span className={a >= 70 ? "text-success" : a >= 50 ? "text-warning" : "text-destructive"}>
-                        {s.right}/{t} ({a}%)
-                      </span>
-                    </div>
-                    <Progress value={a} />
-                  </li>
-                );
-              })}
+            <ul className="space-y-3">
+              {Object.entries(stats.perChapter)
+                .sort(
+                  ([, a], [, b]) =>
+                    (a.right / Math.max(1, a.right + a.wrong)) -
+                    (b.right / Math.max(1, b.right + b.wrong)),
+                )
+                .map(([id, s]) => {
+                  const t = s.right + s.wrong;
+                  const acc = t ? Math.round((s.right / t) * 100) : 0;
+                  const tone = acc >= 70 ? "success" : acc >= 50 ? "warning" : "destructive";
+                  return (
+                    <li key={id} className="space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <span className="font-medium">{s.title}</span>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="success" className="gap-1 h-5">
+                            <CheckCircle2 className="h-3 w-3" /> {s.right}
+                          </Badge>
+                          <Badge variant="destructive" className="gap-1 h-5">
+                            <XCircle className="h-3 w-3" /> {s.wrong}
+                          </Badge>
+                          <span
+                            className={cn(
+                              "text-sm font-semibold tabular-nums",
+                              tone === "success" && "text-success",
+                              tone === "warning" && "text-warning",
+                              tone === "destructive" && "text-destructive",
+                            )}
+                          >
+                            {acc}%
+                          </span>
+                        </div>
+                      </div>
+                      <Progress value={acc} />
+                    </li>
+                  );
+                })}
             </ul>
           </CardContent>
         </Card>
+
+        {stats.wrongCards.length > 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <XCircle className="h-4 w-4 text-destructive" />
+                Cartes à revoir ({stats.wrongCards.length})
+              </CardTitle>
+              <CardDescription>
+                Ces cartes reviendront automatiquement plus tôt grâce au SRS.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-1.5 text-sm">
+                {stats.wrongCards.map((c) => (
+                  <li key={c.id} className="flex items-start gap-2">
+                    <span className="text-muted-foreground text-xs mt-0.5 shrink-0">
+                      [{c.chapterTitle}]
+                    </span>
+                    <span className="flex-1">{c.question}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <div className="flex justify-center gap-2">
           <Button variant="outline" onClick={() => router.push("/dashboard")}>
@@ -275,24 +342,45 @@ export function StudySession({
       >
         <div className={cn("card-flip relative min-h-[300px]", flipped && "flipped")}>
           <Card className="card-flip-face absolute inset-0 flex items-center justify-center">
-            <CardContent className="text-center space-y-3 p-8">
+            <CardContent className="text-center space-y-3 p-8 w-full">
               <Badge variant="secondary">Question</Badge>
               <p className="text-xl font-medium leading-relaxed">{current.question}</p>
               {current.hint ? (
-                <details className="text-sm text-muted-foreground">
-                  <summary className="cursor-pointer">Indice</summary>
-                  <p className="mt-2">{current.hint}</p>
-                </details>
+                <div
+                  className="pt-2"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  {hintShown ? (
+                    <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground text-left">
+                      <span className="font-medium text-foreground">Indice : </span>
+                      {current.hint}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHintShown(true);
+                      }}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Afficher l&apos;indice
+                    </button>
+                  )}
+                </div>
               ) : null}
               <p className="text-xs text-muted-foreground pt-4">
                 Clique ou appuie sur <kbd className="rounded border px-1">Espace</kbd> pour voir la réponse
               </p>
             </CardContent>
           </Card>
-          <Card className="card-flip-face card-flip-back absolute inset-0 flex items-center justify-center bg-accent/40">
-            <CardContent className="text-center space-y-3 p-8">
-              <Badge variant="default">Réponse</Badge>
-              <p className="text-lg leading-relaxed whitespace-pre-wrap">{current.answer}</p>
+          <Card className="card-flip-face card-flip-back absolute inset-0 flex items-center justify-center bg-accent/40 overflow-auto">
+            <CardContent className="space-y-3 p-8 w-full">
+              <div className="text-center">
+                <Badge variant="default">Réponse</Badge>
+              </div>
+              <Markdown className="prose-base text-left">{current.answer}</Markdown>
             </CardContent>
           </Card>
         </div>
@@ -322,6 +410,22 @@ export function StudySession({
       )}
     </div>
   );
+}
+
+function weakestChapter(perChapter: Record<string, { right: number; wrong: number; title: string }>) {
+  const entries = Object.entries(perChapter).filter(([, s]) => s.right + s.wrong >= 2);
+  if (entries.length === 0) return null;
+  let worst = entries[0];
+  let worstAcc = worst[1].right / (worst[1].right + worst[1].wrong);
+  for (const e of entries) {
+    const a = e[1].right / (e[1].right + e[1].wrong);
+    if (a < worstAcc) {
+      worst = e;
+      worstAcc = a;
+    }
+  }
+  if (worstAcc >= 0.7) return null;
+  return worst[1].title;
 }
 
 function SummaryStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

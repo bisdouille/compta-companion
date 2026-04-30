@@ -7,8 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { GenerateButton, GenerateFromSelection } from "./client";
+import { GenerateButton, GenerateFromSelection, GenerateOneFile } from "./client";
 import { safeJSON } from "@/lib/utils";
+import { Markdown } from "@/components/markdown";
+import {
+  AddFlashcardButton,
+  EditFlashcardButton,
+  DeleteFlashcardButton,
+} from "@/components/flashcard-editor";
+import { EditSummaryButton } from "@/components/summary-editor";
 
 export default async function ChapterPage({
   params,
@@ -20,7 +27,10 @@ export default async function ChapterPage({
     where: { id: params.chapterId, course: { userId: user.id } },
     include: {
       course: true,
-      documents: true,
+      documents: {
+        include: { _count: { select: { flashcards: true, quizzes: true } } },
+        orderBy: { name: "asc" },
+      },
       summary: true,
       flashcards: { orderBy: { createdAt: "asc" } },
       quizzes: { orderBy: { createdAt: "asc" } },
@@ -102,8 +112,22 @@ export default async function ChapterPage({
           <TabsContent value="summary">
             <Card>
               <CardHeader>
-                <CardTitle>Résumé express</CardTitle>
-                <CardDescription>Pour réviser en 1 minute.</CardDescription>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle>Résumé express</CardTitle>
+                    <CardDescription>
+                      Pour réviser en 1 minute. {chapter.summary.edited ? "(modifié à la main)" : ""}
+                    </CardDescription>
+                  </div>
+                  <EditSummaryButton
+                    chapterId={chapter.id}
+                    initial={{
+                      short: chapter.summary.short,
+                      full: chapter.summary.full,
+                      keyPoints,
+                    }}
+                  />
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-base leading-relaxed">{chapter.summary.short}</p>
@@ -136,22 +160,48 @@ export default async function ChapterPage({
 
           <TabsContent value="full">
             <Card>
-              <CardContent className="prose prose-sm dark:prose-invert max-w-none pt-6 whitespace-pre-wrap">
-                {chapter.summary.full}
+              <CardContent className="pt-6">
+                <Markdown>{chapter.summary.full}</Markdown>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="flashcards">
+          <TabsContent value="flashcards" className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                {chapter.flashcards.length} carte{chapter.flashcards.length > 1 ? "s" : ""} ·{" "}
+                {chapter.flashcards.filter((c) => c.custom).length} créée(s) à la main
+              </p>
+              <AddFlashcardButton chapterId={chapter.id} />
+            </div>
             <div className="grid gap-3 md:grid-cols-2">
               {chapter.flashcards.map((fc) => (
                 <Card key={fc.id}>
                   <CardContent className="pt-5 space-y-2">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-medium text-sm">{fc.question}</p>
-                      <Badge variant={difficultyVariant(fc.difficulty)}>{fc.difficulty}</Badge>
+                      <div className="flex-1 space-y-1">
+                        <p className="font-medium text-sm">{fc.question}</p>
+                        {fc.hint ? (
+                          <p className="text-xs text-muted-foreground italic">
+                            Indice : {fc.hint}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex items-start gap-1 shrink-0">
+                        <Badge variant={difficultyVariant(fc.difficulty)} className="h-5">
+                          {fc.difficulty}
+                        </Badge>
+                        {fc.custom ? <Badge variant="outline" className="h-5">custom</Badge> : null}
+                        {fc.edited && !fc.custom ? (
+                          <Badge variant="outline" className="h-5">édité</Badge>
+                        ) : null}
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground">{fc.answer}</p>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{fc.answer}</p>
+                    <div className="flex justify-end gap-1 pt-1">
+                      <EditFlashcardButton card={fc} />
+                      <DeleteFlashcardButton cardId={fc.id} />
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -197,58 +247,58 @@ export default async function ChapterPage({
           </TabsContent>
 
           <TabsContent value="docs">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Fichiers du chapitre</CardTitle>
-                  <CardDescription>
-                    Texte extrait stocké localement (pas de re-paiement à la régénération).
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ul className="divide-y">
-                    {chapter.documents.map((d) => (
-                      <li key={d.id} className="flex items-center gap-2 py-2 text-sm">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        <span className="flex-1 truncate">{d.name}</span>
-                        {d.rawText ? (
-                          <span className="text-xs text-muted-foreground">
-                            {Math.round(d.rawText.length / 1000)}k car.
-                          </span>
-                        ) : null}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Fichiers du chapitre</CardTitle>
+                <CardDescription>
+                  Chaque fichier est traité indépendamment. Génère ou régénère un fichier sans
+                  toucher aux autres.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="divide-y">
+                  {chapter.documents.map((d) => {
+                    const cardCount = d._count.flashcards;
+                    const quizCount = d._count.quizzes;
+                    const processed = cardCount > 0 || quizCount > 0;
+                    return (
+                      <li key={d.id} className="flex items-center gap-3 py-3">
+                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium truncate">{d.name}</span>
+                            {processed ? (
+                              <Badge variant="success" className="h-5">traité</Badge>
+                            ) : (
+                              <Badge variant="outline" className="h-5">non traité</Badge>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {d.rawText ? `${Math.round(d.rawText.length / 1000)}k car.` : "non extrait"}
+                            {processed
+                              ? ` · ${cardCount} cartes · ${quizCount} quiz`
+                              : ""}
+                          </div>
+                        </div>
                         <a
-                          className="text-primary text-xs hover:underline"
+                          className="text-primary text-xs hover:underline shrink-0"
                           href={`https://drive.google.com/file/d/${d.driveFileId}/view`}
                           target="_blank"
                           rel="noreferrer"
                         >
                           Drive ↗
                         </a>
+                        <GenerateOneFile
+                          chapterId={chapter.id}
+                          documentId={d.id}
+                          processed={processed}
+                        />
                       </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Régénérer depuis une sélection</CardTitle>
-                  <CardDescription>
-                    Écrase les flashcards/quiz du chapitre (les cartes déjà révisées sont
-                    conservées).
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <GenerateFromSelection
-                    chapterId={chapter.id}
-                    documents={chapter.documents.map((d) => ({
-                      id: d.id,
-                      name: d.name,
-                      rawText: d.rawText,
-                    }))}
-                  />
-                </CardContent>
-              </Card>
-            </div>
+                    );
+                  })}
+                </ul>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       )}

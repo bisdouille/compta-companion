@@ -8,6 +8,64 @@ import { Button } from "@/components/ui/button";
 
 type Doc = { id: string; name: string; rawText: string | null };
 
+/**
+ * Bouton compact pour générer/régénérer 1 seul fichier sans toucher aux autres.
+ * Utilisé dans la liste des documents.
+ */
+export function GenerateOneFile({
+  chapterId,
+  documentId,
+  processed,
+}: {
+  chapterId: string;
+  documentId: string;
+  processed: boolean;
+}) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  async function run() {
+    if (processed && !window.confirm("Ce fichier a déjà été traité. Régénérer ses cartes ?")) {
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/chapters/${chapterId}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentIds: [documentId] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || "Échec");
+      toast.success(`Fichier traité : ${data.flashcards} cartes, ${data.quiz} quiz`);
+      router.refresh();
+    } catch (e) {
+      toast.error("Erreur : " + (e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Button
+      onClick={run}
+      disabled={loading}
+      size="sm"
+      variant={processed ? "outline" : "default"}
+      className="shrink-0"
+    >
+      {loading ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : processed ? (
+        <RefreshCcw className="h-3.5 w-3.5" />
+      ) : (
+        <Sparkles className="h-3.5 w-3.5" />
+      )}
+      {processed ? "Régénérer" : "Générer"}
+    </Button>
+  );
+}
+
 export function GenerateButton({
   chapterId,
   hasContent,

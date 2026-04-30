@@ -125,6 +125,9 @@ model Document {
   processedAt  DateTime?
   createdAt    DateTime  @default(now())
 
+  flashcards Flashcard[]
+  quizzes    Quiz[]
+
   @@index([chapterId])
 }
 
@@ -145,11 +148,14 @@ model Flashcard {
   id         String   @id @default(cuid())
   chapterId  String
   chapter    Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  documentId String? // fichier source (null = créée manuellement ou multi-fichiers)
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
   question   String
   answer     String
   hint       String?
   difficulty String   @default("medium") // easy | medium | hard
   tags       String? // JSON string array
+  custom     Boolean  @default(false) // créée à la main par l'utilisateur
   createdAt  DateTime @default(now())
   edited     Boolean  @default(false)
 
@@ -157,12 +163,15 @@ model Flashcard {
   reviews Review[]
 
   @@index([chapterId])
+  @@index([documentId])
 }
 
 model Quiz {
   id          String   @id @default(cuid())
   chapterId   String
   chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  documentId  String?
+  document    Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
   type        String // mcq | case
   question    String
   choices     String? // JSON pour MCQ
@@ -171,6 +180,7 @@ model Quiz {
   createdAt   DateTime @default(now())
 
   @@index([chapterId])
+  @@index([documentId])
 }
 
 // ---------- Étude / SRS ----------

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Save, FolderSync, Link2 } from "lucide-react";
+import { Loader2, Save, FolderSync, Link2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,6 +68,46 @@ export function DriveSettings({ currentFolderId }: { currentFolderId: string }) 
         ) : null}
       </div>
     </div>
+  );
+}
+
+export function ResetProgressionButton() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  async function reset() {
+    if (
+      !window.confirm(
+        "Réinitialiser toute ta progression ?\n\n" +
+          "Cela supprime :\n" +
+          "  • toutes les révisions enregistrées (état SM-2)\n" +
+          "  • l'historique des sessions et l'agenda quotidien\n\n" +
+          "Le contenu de tes cours, fiches et flashcards reste intact.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/study/reset", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur");
+      toast.success(
+        `Progression réinitialisée (${data.removed.reviews} révisions, ${data.removed.sessions} sessions)`,
+      );
+      router.refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Button onClick={reset} variant="destructive" disabled={busy}>
+      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+      Réinitialiser la progression
+    </Button>
   );
 }
 
@@ -154,9 +194,9 @@ export function SettingsForm({ defaultValues }: { defaultValues: FormValues }) {
           value={values.preferredModel}
           onChange={(e) => set("preferredModel", e.target.value)}
         >
-          <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (recommandé, rapide & pas cher)</option>
-          <option value="claude-opus-4-7">Claude Opus 4.7 (plus puissant, plus cher)</option>
-          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (le moins cher)</option>
+          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (recommandé, le moins cher)</option>
+          <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (qualité supérieure, ~3× plus cher)</option>
+          <option value="claude-opus-4-7">Claude Opus 4.7 (le plus puissant, le plus cher)</option>
         </select>
       </div>
       <div className="sm:col-span-2">

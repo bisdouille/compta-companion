@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { SettingsForm, DriveSettings } from "./client";
+import { SettingsForm, DriveSettings, ResetProgressionButton } from "./client";
 
 export default async function SettingsPage() {
   const user = (await getCurrentUser())!;
@@ -40,9 +40,22 @@ export default async function SettingsPage() {
               dailyGoalCards: prefs?.dailyGoalCards ?? 20,
               examDate: prefs?.examDate ? prefs.examDate.toISOString().slice(0, 10) : "",
               reminderTime: prefs?.reminderTime ?? "",
-              preferredModel: prefs?.preferredModel ?? "claude-sonnet-4-6",
+              preferredModel: prefs?.preferredModel ?? "claude-haiku-4-5-20251001",
             }}
           />
+        </CardContent>
+      </Card>
+
+      <Card className="border-destructive/30">
+        <CardHeader>
+          <CardTitle>Zone sensible</CardTitle>
+          <CardDescription>
+            Remet à zéro ta progression de révision (SM-2, sessions, agenda quotidien). Ne touche
+            pas au contenu généré.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ResetProgressionButton />
         </CardContent>
       </Card>
     </div>

@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Heatmap } from "@/components/heatmap";
+import { MotivationalQuote } from "@/components/motivational-quote";
 import { daysBetween } from "@/lib/utils";
 
 export default async function DashboardPage() {
@@ -42,15 +43,16 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
+        <div className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight">
             Salut {user.name?.split(" ")[0] || "👋"}
           </h1>
           <p className="text-muted-foreground">
             {todayMin >= goalMin
-              ? "Objectif du jour atteint, bravo ! 🎉"
+              ? "Objectif du jour atteint, bravo !"
               : "Voici ton plan de révision pour aujourd'hui."}
           </p>
+          <MotivationalQuote />
         </div>
         <Button asChild size="lg">
           <Link href="/study">

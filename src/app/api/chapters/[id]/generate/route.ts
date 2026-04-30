@@ -26,7 +26,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const chapter = await prisma.chapter.findFirst({
     where: { id: params.id, course: { userId: user.id } },
-    include: { documents: true, course: true },
+    include: { documents: true, course: true, summary: true },
   });
   if (!chapter) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
@@ -115,29 +115,50 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
-  // Persist
-  await prisma.summary.upsert({
-    where: { chapterId: chapter.id },
-    create: {
-      chapterId: chapter.id,
-      short: content.summary.short,
-      full: content.summary.full,
-      keyPoints: JSON.stringify(content.summary.keyPoints || []),
-      glossary: JSON.stringify(content.summary.glossary || []),
-    },
-    update: {
-      short: content.summary.short,
-      full: content.summary.full,
-      keyPoints: JSON.stringify(content.summary.keyPoints || []),
-      glossary: JSON.stringify(content.summary.glossary || []),
-      generatedAt: new Date(),
-      edited: false,
-    },
-  });
+  // ---------- Persistance ----------
+  // Mode "single-file" : on tague tout ce qui est créé avec le documentId, et on ne
+  // remplace QUE les éléments précédemment générés depuis ce même fichier.
+  // Mode "multi/all" : régénération du chapitre — on remplace les éléments
+  // chapitre-level (documentId null) en gardant les cartes custom et les cartes
+  // d'autres fichiers.
+  const singleFileMode = docs.length === 1;
+  const targetDocId = singleFileMode ? docs[0].id : null;
 
-  // Replace flashcards & quiz (keep existing reviews if same content? simpler: only delete cards without reviews)
+  // Résumé : créé s'il n'existe pas, ou mis à jour seulement en mode multi/all
+  // (sinon générer 1 fichier écraserait la synthèse chapitre).
+  if (!singleFileMode || !chapter.summary) {
+    await prisma.summary.upsert({
+      where: { chapterId: chapter.id },
+      create: {
+        chapterId: chapter.id,
+        short: content.summary.short,
+        full: content.summary.full,
+        keyPoints: JSON.stringify(content.summary.keyPoints || []),
+        glossary: JSON.stringify(content.summary.glossary || []),
+      },
+      update: {
+        short: content.summary.short,
+        full: content.summary.full,
+        keyPoints: JSON.stringify(content.summary.keyPoints || []),
+        glossary: JSON.stringify(content.summary.glossary || []),
+        generatedAt: new Date(),
+        edited: false,
+      },
+    });
+  }
+
+  // Suppression sélective des anciennes cartes/quiz à régénérer.
+  // - single-file : uniquement celles taguées avec ce documentId
+  // - multi/all : celles sans documentId OU dont le doc fait partie du batch,
+  //               à l'exclusion des cards custom et de celles avec reviews.
   const existingCards = await prisma.flashcard.findMany({
-    where: { chapterId: chapter.id },
+    where: singleFileMode
+      ? { chapterId: chapter.id, documentId: targetDocId }
+      : {
+          chapterId: chapter.id,
+          custom: false,
+          OR: [{ documentId: null }, { documentId: { in: docs.map((d) => d.id) } }],
+        },
     include: { _count: { select: { reviews: true } } },
   });
   const safeToDelete = existingCards.filter((c) => c._count.reviews === 0).map((c) => c.id);
@@ -149,6 +170,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await prisma.flashcard.create({
       data: {
         chapterId: chapter.id,
+        documentId: targetDocId,
         question: fc.question,
         answer: fc.answer,
         hint: fc.hint,
@@ -158,11 +180,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     });
   }
 
-  await prisma.quiz.deleteMany({ where: { chapterId: chapter.id } });
+  await prisma.quiz.deleteMany({
+    where: singleFileMode
+      ? { chapterId: chapter.id, documentId: targetDocId }
+      : {
+          chapterId: chapter.id,
+          OR: [{ documentId: null }, { documentId: { in: docs.map((d) => d.id) } }],
+        },
+  });
   for (const q of content.quiz || []) {
     await prisma.quiz.create({
       data: {
         chapterId: chapter.id,
+        documentId: targetDocId,
         type: q.type,
         question: q.question,
         choices: q.choices ? JSON.stringify(q.choices) : null,
@@ -171,6 +201,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       },
     });
   }
+
+  // Marque les docs traités (utile pour l'UI "non traité / traité").
+  await prisma.document.updateMany({
+    where: { id: { in: docs.map((d) => d.id) } },
+    data: { processedAt: new Date() },
+  });
 
   return NextResponse.json({
     ok: true,
