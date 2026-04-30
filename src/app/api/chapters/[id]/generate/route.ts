@@ -7,53 +7,77 @@ import { generateChapterContent } from "@/lib/generate";
 
 export const maxDuration = 300; // seconds (Vercel pro / self-hosted)
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  // Body optionnel : { documentIds?: string[], force?: boolean }
+  // - documentIds : ne traiter que ces documents (sinon tous)
+  // - force : ignorer le cache rawText et re-télécharger depuis Drive
+  let documentIds: string[] | undefined;
+  let force = false;
+  try {
+    const body = (await req.json()) as { documentIds?: string[]; force?: boolean };
+    documentIds = body?.documentIds;
+    force = !!body?.force;
+  } catch {
+    // pas de body, OK
+  }
 
   const chapter = await prisma.chapter.findFirst({
     where: { id: params.id, course: { userId: user.id } },
     include: { documents: true, course: true },
   });
   if (!chapter) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (chapter.documents.length === 0) {
+
+  const docs = documentIds && documentIds.length > 0
+    ? chapter.documents.filter((d) => documentIds!.includes(d.id))
+    : chapter.documents;
+  if (docs.length === 0) {
     return NextResponse.json({ error: "no_documents" }, { status: 400 });
   }
-
-  const drive = await getDriveClient(user.id);
-  if (!drive) return NextResponse.json({ error: "no_drive_token" }, { status: 400 });
 
   const prefs = await prisma.userPreference.findUnique({ where: { userId: user.id } });
 
   console.log(
-    `\n🤖 [generate] ${chapter.course.title} → ${chapter.title} (${chapter.documents.length} doc(s))`,
+    `\n🤖 [generate] ${chapter.course.title} → ${chapter.title} (${docs.length}/${chapter.documents.length} doc(s)${force ? ", force" : ""})`,
   );
+
+  // Drive client n'est nécessaire que si on doit (re)télécharger au moins un doc.
+  const needsDrive = force || docs.some((d) => !d.rawText || d.mimeType.startsWith("image/"));
+  const drive = needsDrive ? await getDriveClient(user.id) : null;
+  if (needsDrive && !drive) {
+    return NextResponse.json({ error: "no_drive_token" }, { status: 400 });
+  }
 
   const extractions: Extraction[] = [];
   const extractErrors: string[] = [];
-  for (const doc of chapter.documents) {
+  for (const doc of docs) {
     try {
+      // Réutilise le texte déjà extrait si dispo (évite re-DL Drive + re-parse PDF).
+      if (!force && doc.rawText && !doc.mimeType.startsWith("image/")) {
+        console.log(`   ♻️  Cache: ${doc.name} (${doc.rawText.length} caractères)`);
+        extractions.push({ kind: "text", text: doc.rawText });
+        continue;
+      }
       console.log(`   ⬇️  Téléchargement Drive: ${doc.name} (${doc.mimeType})`);
-      const buffer = await downloadFile(drive, doc.driveFileId, doc.mimeType);
+      const buffer = await downloadFile(drive!, doc.driveFileId, doc.mimeType);
       console.log(`   📄 Extraction: ${doc.name} (${buffer.length} bytes)`);
       const ext = await extractFromBuffer(buffer, doc.mimeType);
       if (ext.kind === "text") {
         console.log(`   ✓ Texte extrait: ${ext.text.length} caractères`);
-      } else {
-        console.log(`   ✓ Image préparée: ${ext.mediaType}`);
-      }
-      extractions.push(ext);
-      if (ext.kind === "text") {
         await prisma.document.update({
           where: { id: doc.id },
           data: { rawText: ext.text.slice(0, 200000), processedAt: new Date() },
         });
       } else {
+        console.log(`   ✓ Image préparée: ${ext.mediaType}`);
         await prisma.document.update({
           where: { id: doc.id },
           data: { processedAt: new Date() },
         });
       }
+      extractions.push(ext);
     } catch (e) {
       const msg = (e as Error).message;
       console.error(`   ❌ Échec ${doc.name}: ${msg}`);
@@ -71,7 +95,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     );
   }
 
-  console.log(`   🧠 Appel Claude (${prefs?.preferredModel || "claude-sonnet-4-6"})...`);
+  console.log(`   🧠 Appel Claude (${prefs?.preferredModel || "haiku-4.5"})...`);
   let content;
   try {
     content = await generateChapterContent({

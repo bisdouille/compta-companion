@@ -37,7 +37,7 @@ model UserPreference {
   dailyGoalCards  Int       @default(20) // cartes par jour
   reminderTime    String? // HH:mm pour rappel
   driveRootFolder String? // ID du dossier Drive racine
-  preferredModel  String    @default("claude-sonnet-4-6")
+  preferredModel  String    @default("claude-haiku-4-5-20251001")
   updatedAt       DateTime  @updatedAt
 }
 

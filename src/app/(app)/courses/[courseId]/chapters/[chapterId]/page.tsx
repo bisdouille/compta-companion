@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { GenerateButton } from "./client";
+import { GenerateButton, GenerateFromSelection } from "./client";
 import { safeJSON } from "@/lib/utils";
 
 export default async function ChapterPage({
@@ -68,14 +68,25 @@ export default async function ChapterPage({
 
       {!chapter.summary ? (
         <Card className="border-dashed">
-          <CardContent className="py-10 text-center space-y-3">
-            <Sparkles className="h-10 w-10 mx-auto text-primary" />
-            <h3 className="font-semibold">Pas encore de contenu généré</h3>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Lance la génération IA pour transformer les {chapter.documents.length} documents en
-              fiche, résumé, flashcards et cas pratiques.
-            </p>
-            <GenerateButton chapterId={chapter.id} hasContent={false} />
+          <CardContent className="py-8 space-y-4">
+            <div className="text-center space-y-2">
+              <Sparkles className="h-10 w-10 mx-auto text-primary" />
+              <h3 className="font-semibold">Pas encore de contenu généré</h3>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                Le contenu généré est stocké en local — tu ne paies qu&apos;une fois par chapitre.
+                Pour économiser, commence par tester sur 1 ou 2 fichiers.
+              </p>
+            </div>
+            <div className="max-w-md mx-auto">
+              <GenerateFromSelection
+                chapterId={chapter.id}
+                documents={chapter.documents.map((d) => ({
+                  id: d.id,
+                  name: d.name,
+                  rawText: d.rawText,
+                }))}
+              />
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -186,26 +197,58 @@ export default async function ChapterPage({
           </TabsContent>
 
           <TabsContent value="docs">
-            <Card>
-              <CardContent className="pt-6">
-                <ul className="divide-y">
-                  {chapter.documents.map((d) => (
-                    <li key={d.id} className="flex items-center gap-2 py-2 text-sm">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="flex-1 truncate">{d.name}</span>
-                      <a
-                        className="text-primary text-xs hover:underline"
-                        href={`https://drive.google.com/file/d/${d.driveFileId}/view`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Drive ↗
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Fichiers du chapitre</CardTitle>
+                  <CardDescription>
+                    Texte extrait stocké localement (pas de re-paiement à la régénération).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ul className="divide-y">
+                    {chapter.documents.map((d) => (
+                      <li key={d.id} className="flex items-center gap-2 py-2 text-sm">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="flex-1 truncate">{d.name}</span>
+                        {d.rawText ? (
+                          <span className="text-xs text-muted-foreground">
+                            {Math.round(d.rawText.length / 1000)}k car.
+                          </span>
+                        ) : null}
+                        <a
+                          className="text-primary text-xs hover:underline"
+                          href={`https://drive.google.com/file/d/${d.driveFileId}/view`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Drive ↗
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Régénérer depuis une sélection</CardTitle>
+                  <CardDescription>
+                    Écrase les flashcards/quiz du chapitre (les cartes déjà révisées sont
+                    conservées).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <GenerateFromSelection
+                    chapterId={chapter.id}
+                    documents={chapter.documents.map((d) => ({
+                      id: d.id,
+                      name: d.name,
+                      rawText: d.rawText,
+                    }))}
+                  />
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       )}

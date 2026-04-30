@@ -12,4 +12,6 @@ export function getAnthropic(): Anthropic {
   return _client;
 }
 
-export const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+// Haiku 4.5 par défaut : ~3x moins cher que Sonnet, suffisant pour de la
+// génération JSON structurée à partir d'un cours déjà extrait en texte.
+export const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
