@@ -2,15 +2,15 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-export async function PATCH(req: Request, { params }: { params: { chapterId: string } }) {
+export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const chapter = await prisma.chapter.findFirst({
-    where: { id: params.chapterId, course: { userId: user.id } },
+  const doc = await prisma.document.findFirst({
+    where: { id: params.id, chapter: { course: { userId: user.id } } },
     include: { summary: true },
   });
-  if (!chapter) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!doc) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const body = (await req.json()) as {
     short?: string;
@@ -20,20 +20,20 @@ export async function PATCH(req: Request, { params }: { params: { chapterId: str
   };
 
   const data = {
-    short: body.short ?? chapter.summary?.short ?? "",
-    full: body.full ?? chapter.summary?.full ?? "",
+    short: body.short ?? doc.summary?.short ?? "",
+    full: body.full ?? doc.summary?.full ?? "",
     keyPoints: body.keyPoints
       ? JSON.stringify(body.keyPoints)
-      : chapter.summary?.keyPoints ?? "[]",
+      : doc.summary?.keyPoints ?? "[]",
     glossary: body.glossary
       ? JSON.stringify(body.glossary)
-      : chapter.summary?.glossary ?? "[]",
+      : doc.summary?.glossary ?? "[]",
     edited: true,
   };
 
   const summary = await prisma.summary.upsert({
-    where: { chapterId: chapter.id },
-    create: { chapterId: chapter.id, ...data },
+    where: { documentId: doc.id },
+    create: { documentId: doc.id, ...data },
     update: data,
   });
 

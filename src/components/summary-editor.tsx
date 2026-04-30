@@ -18,10 +18,10 @@ import {
 } from "@/components/ui/dialog";
 
 export function EditSummaryButton({
-  chapterId,
+  documentId,
   initial,
 }: {
-  chapterId: string;
+  documentId: string;
   initial: { short: string; full: string; keyPoints: string[] };
 }) {
   const router = useRouter();
@@ -40,7 +40,7 @@ export function EditSummaryButton({
         .split("\n")
         .map((s) => s.trim())
         .filter(Boolean);
-      const res = await fetch(`/api/summary/${chapterId}`, {
+      const res = await fetch(`/api/documents/${documentId}/summary`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ short: v.short, full: v.full, keyPoints }),

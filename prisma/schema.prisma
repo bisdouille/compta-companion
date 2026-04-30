@@ -105,10 +105,7 @@ model Chapter {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  documents  Document[]
-  summary    Summary?
-  flashcards Flashcard[]
-  quizzes    Quiz[]
+  documents Document[]
 
   @@index([courseId])
 }
@@ -123,19 +120,21 @@ model Document {
   modifiedTime DateTime?
   rawText      String? // texte extrait
   processedAt  DateTime?
+  order        Int       @default(0)
   createdAt    DateTime  @default(now())
 
+  summary    Summary?
   flashcards Flashcard[]
   quizzes    Quiz[]
 
   @@index([chapterId])
 }
 
-// ---------- Contenu généré ----------
+// ---------- Contenu généré (rattaché au document) ----------
 model Summary {
   id          String   @id @default(cuid())
-  chapterId   String   @unique
-  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  documentId  String   @unique
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   short       String // résumé court (TL;DR)
   full        String // fiche détaillée (Markdown)
   keyPoints   String // JSON string array
@@ -146,10 +145,8 @@ model Summary {
 
 model Flashcard {
   id         String   @id @default(cuid())
-  chapterId  String
-  chapter    Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
-  documentId String? // fichier source (null = créée manuellement ou multi-fichiers)
-  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   question   String
   answer     String
   hint       String?
@@ -159,19 +156,15 @@ model Flashcard {
   createdAt  DateTime @default(now())
   edited     Boolean  @default(false)
 
-  // SM-2 fields (par utilisateur via Review, mais on garde stats globales)
   reviews Review[]
 
-  @@index([chapterId])
   @@index([documentId])
 }
 
 model Quiz {
   id          String   @id @default(cuid())
-  chapterId   String
-  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
-  documentId  String?
-  document    Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   type        String // mcq | case
   question    String
   choices     String? // JSON pour MCQ
@@ -179,7 +172,6 @@ model Quiz {
   explanation String?
   createdAt   DateTime @default(now())
 
-  @@index([chapterId])
   @@index([documentId])
 }
 

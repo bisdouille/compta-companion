@@ -92,7 +92,7 @@ function FlashcardForm({
   );
 }
 
-export function AddFlashcardButton({ chapterId }: { chapterId: string }) {
+export function AddFlashcardButton({ documentId }: { documentId: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -103,7 +103,7 @@ export function AddFlashcardButton({ chapterId }: { chapterId: string }) {
       const res = await fetch("/api/flashcards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chapterId, ...v }),
+        body: JSON.stringify({ documentId, ...v }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur");

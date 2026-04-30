@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { BookOpen, FolderSync, Plus, FileText, Layers } from "lucide-react";
+import { BookOpen, FileText, Layers } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CoursesActions } from "./client";
 
@@ -16,8 +15,12 @@ export default async function CoursesPage() {
       include: {
         chapters: {
           include: {
-            _count: { select: { flashcards: true, documents: true, quizzes: true } },
-            summary: { select: { id: true } },
+            documents: {
+              include: {
+                summary: { select: { id: true } },
+                _count: { select: { flashcards: true } },
+              },
+            },
           },
         },
       },
@@ -32,7 +35,7 @@ export default async function CoursesPage() {
           <h1 className="text-3xl font-bold tracking-tight">Mes cours</h1>
           <p className="text-muted-foreground">
             {prefs?.driveRootFolder
-              ? "Tes cours sont enregistrés en local. Clique sur « Mettre à jour » seulement si tu as ajouté de nouveaux fichiers au Drive."
+              ? "Les cours sont stockés en local. Clique sur « Mettre à jour » seulement après avoir ajouté de nouveaux fichiers au Drive."
               : "Connecte un dossier Drive pour démarrer (une seule fois)."}
           </p>
         </div>
@@ -58,9 +61,10 @@ export default async function CoursesPage() {
 
       <div className="grid gap-4">
         {courses.map((c) => {
-          const totalCards = c.chapters.reduce((a, ch) => a + ch._count.flashcards, 0);
-          const totalDocs = c.chapters.reduce((a, ch) => a + ch._count.documents, 0);
-          const generated = c.chapters.filter((ch) => ch.summary).length;
+          const allDocs = c.chapters.flatMap((ch) => ch.documents);
+          const totalDocs = allDocs.length;
+          const totalCards = allDocs.reduce((a, d) => a + d._count.flashcards, 0);
+          const processedDocs = allDocs.filter((d) => d.summary).length;
           return (
             <Card key={c.id} style={{ borderTopColor: c.color, borderTopWidth: 3 }}>
               <CardHeader>
@@ -68,34 +72,44 @@ export default async function CoursesPage() {
                   <div>
                     <CardTitle>{c.title}</CardTitle>
                     <CardDescription className="mt-1">
-                      {c.chapters.length} chapitres · {totalDocs} documents · {totalCards} cartes
+                      {c.chapters.length} chapitres · {totalDocs} fichiers · {totalCards} cartes
                     </CardDescription>
                   </div>
-                  <Badge variant={generated === c.chapters.length ? "success" : "secondary"}>
-                    {generated}/{c.chapters.length} générés
+                  <Badge variant={processedDocs === totalDocs && totalDocs > 0 ? "success" : "secondary"}>
+                    {processedDocs}/{totalDocs} traités
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent>
                 <ul className="grid gap-2 sm:grid-cols-2">
-                  {c.chapters.map((ch) => (
-                    <li key={ch.id}>
-                      <Link
-                        href={`/courses/${c.id}/chapters/${ch.id}`}
-                        className="flex items-center gap-2 rounded-lg border p-3 hover:bg-accent/50 transition-colors"
-                      >
-                        <Layers className="h-4 w-4 text-muted-foreground shrink-0" />
-                        <span className="flex-1 truncate text-sm font-medium">{ch.title}</span>
-                        <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <FileText className="h-3 w-3" /> {ch._count.documents}
+                  {c.chapters.map((ch) => {
+                    const chDocs = ch.documents.length;
+                    const chProcessed = ch.documents.filter((d) => d.summary).length;
+                    const chCards = ch.documents.reduce((a, d) => a + d._count.flashcards, 0);
+                    return (
+                      <li key={ch.id}>
+                        <Link
+                          href={`/courses/${c.id}/chapters/${ch.id}`}
+                          className="flex items-center gap-2 rounded-lg border p-3 hover:bg-accent/50 transition-colors"
+                        >
+                          <Layers className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className="flex-1 truncate text-sm font-medium">{ch.title}</span>
+                          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <FileText className="h-3 w-3" /> {chDocs}
+                            </span>
+                            <span>{chCards} cartes</span>
+                            <Badge
+                              variant={chProcessed === chDocs && chDocs > 0 ? "success" : "outline"}
+                              className="h-5"
+                            >
+                              {chProcessed}/{chDocs}
+                            </Badge>
                           </span>
-                          <span>{ch._count.flashcards} 🎴</span>
-                          {ch.summary ? <Badge variant="success" className="h-5">✓</Badge> : <Badge variant="outline" className="h-5">à générer</Badge>}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
+                        </Link>
+                      </li>
+                    );
+                  })}
                 </ul>
               </CardContent>
             </Card>

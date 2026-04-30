@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 async function getOwnedCard(userId: string, id: string) {
   return prisma.flashcard.findFirst({
-    where: { id, chapter: { course: { userId } } },
+    where: { id, document: { chapter: { course: { userId } } } },
   });
 }
 

@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { SettingsForm, DriveSettings, ResetProgressionButton } from "./client";
+import { SettingsForm, DriveSettings, ResetProgressionButton, WipeAllCoursesButton } from "./client";
 
 export default async function SettingsPage() {
   const user = (await getCurrentUser())!;
@@ -50,12 +50,21 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle>Zone sensible</CardTitle>
           <CardDescription>
-            Remet à zéro ta progression de révision (SM-2, sessions, agenda quotidien). Ne touche
-            pas au contenu généré.
+            Réinitialise ta progression de révision, ou efface tout pour repartir de zéro.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <ResetProgressionButton />
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-3">
+            <ResetProgressionButton />
+            <WipeAllCoursesButton />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            <strong>Réinitialiser la progression</strong> : efface seulement l&apos;historique de
+            révision (SM-2, sessions, agenda). Le contenu reste.
+            <br />
+            <strong>Tout supprimer</strong> : efface aussi les cours, fichiers, fiches et
+            flashcards. À utiliser avant de ré-importer depuis Drive.
+          </p>
         </CardContent>
       </Card>
     </div>

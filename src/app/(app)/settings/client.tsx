@@ -71,6 +71,45 @@ export function DriveSettings({ currentFolderId }: { currentFolderId: string }) 
   );
 }
 
+export function WipeAllCoursesButton() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  async function run() {
+    if (
+      !window.confirm(
+        "ATTENTION — supprimer TOUS les cours importés ?\n\n" +
+          "Cela supprime :\n" +
+          "  • tous les cours, chapitres, fichiers indexés\n" +
+          "  • tous les résumés, fiches, flashcards et quiz générés\n" +
+          "  • toute la progression de révision\n\n" +
+          "Réglages et compte conservés. Tu pourras ré-importer depuis Drive ensuite.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/courses/reset", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur");
+      toast.success(`Tout supprimé : ${data.removed.courses} cours`);
+      router.refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Button onClick={run} variant="destructive" disabled={busy}>
+      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+      Tout supprimer (cours + progression)
+    </Button>
+  );
+}
+
 export function ResetProgressionButton() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

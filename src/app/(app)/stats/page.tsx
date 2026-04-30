@@ -19,17 +19,24 @@ export default async function StatsPage() {
       include: {
         chapters: {
           include: {
-            flashcards: {
-              include: { reviews: { where: { userId: user.id } } },
+            documents: {
+              include: {
+                flashcards: {
+                  include: { reviews: { where: { userId: user.id } } },
+                },
+              },
             },
           },
         },
       },
     }),
     prisma.flashcard.findMany({
-      where: { chapter: { course: { userId: user.id } }, reviews: { some: { userId: user.id } } },
+      where: {
+        document: { chapter: { course: { userId: user.id } } },
+        reviews: { some: { userId: user.id } },
+      },
       include: {
-        chapter: { include: { course: true } },
+        document: { include: { chapter: { include: { course: true } } } },
         reviews: { where: { userId: user.id } },
       },
       take: 200,
@@ -40,7 +47,7 @@ export default async function StatsPage() {
 
   // Mastery per course
   const masteryByCourse = courses.map((c) => {
-    const cards = c.chapters.flatMap((ch) => ch.flashcards);
+    const cards = c.chapters.flatMap((ch) => ch.documents.flatMap((d) => d.flashcards));
     const total = cards.length;
     const mastered = cards.filter((card) => {
       const r = card.reviews[0];
@@ -65,8 +72,8 @@ export default async function StatsPage() {
         ? {
             id: c.id,
             question: c.question,
-            chapter: c.chapter.title,
-            course: c.chapter.course.title,
+            chapter: c.document.chapter.title,
+            course: c.document.chapter.course.title,
             ease: r.ease,
             lastQuality: r.lastQuality ?? 5,
           }

@@ -13,7 +13,7 @@ export async function getDashboardData(userId: string) {
       where: { userId, dueAt: { lte: new Date() } },
     }),
     prisma.flashcard.count({
-      where: { chapter: { course: { userId } } },
+      where: { document: { chapter: { course: { userId } } } },
     }),
     prisma.course.count({ where: { userId } }),
     prisma.studySession.findMany({

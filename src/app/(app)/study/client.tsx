@@ -28,15 +28,18 @@ type CardItem = {
   answer: string;
   hint?: string | null;
   difficulty: string;
+  document: { id: string; name: string };
   chapter: { id: string; title: string };
   course: { id: string; title: string };
 };
 
 export function StudySession({
+  documentId,
   chapterId,
   courseId,
   mode,
 }: {
+  documentId?: string;
   chapterId?: string;
   courseId?: string;
   mode: string;
@@ -67,6 +70,7 @@ export function StudySession({
     async function init() {
       try {
         const params = new URLSearchParams();
+        if (documentId) params.set("documentId", documentId);
         if (chapterId) params.set("chapterId", chapterId);
         if (courseId) params.set("courseId", courseId);
         params.set("mode", mode);
@@ -93,7 +97,7 @@ export function StudySession({
     return () => {
       cancelled = true;
     };
-  }, [chapterId, courseId, mode]);
+  }, [documentId, chapterId, courseId, mode]);
 
   const current = cards[idx];
 
@@ -319,8 +323,8 @@ export function StudySession({
     <div className="space-y-4 max-w-3xl mx-auto">
       <div className="space-y-2">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
-            Carte {idx + 1} / {cards.length} · {current.course.title} · {current.chapter.title}
+          <span className="text-muted-foreground truncate">
+            Carte {idx + 1} / {cards.length} · {current.chapter.title} · {current.document.name}
           </span>
           <span className="flex items-center gap-2">
             <Badge variant="success" className="gap-1">

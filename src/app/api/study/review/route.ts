@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   };
 
   const card = await prisma.flashcard.findFirst({
-    where: { id: body.flashcardId, chapter: { course: { userId: user.id } } },
+    where: { id: body.flashcardId, document: { chapter: { course: { userId: user.id } } } },
   });
   if (!card) return NextResponse.json({ error: "not_found" }, { status: 404 });
 

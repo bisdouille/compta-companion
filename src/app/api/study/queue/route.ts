@@ -5,8 +5,9 @@ import { prisma } from "@/lib/prisma";
 /**
  * Build the study queue.
  * Query params:
- *   - chapterId : limit to a chapter
- *   - courseId : limit to a course
+ *   - documentId : limit to a single document
+ *   - chapterId : limit to all docs in a chapter
+ *   - courseId : limit to all docs in a course
  *   - limit (default 30)
  *   - mode : "due" | "quick5" | "all"
  */
@@ -15,27 +16,32 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const url = new URL(request.url);
+  const documentId = url.searchParams.get("documentId");
   const chapterId = url.searchParams.get("chapterId");
   const courseId = url.searchParams.get("courseId");
   const mode = url.searchParams.get("mode") || "due";
   const limit = Math.min(100, Number(url.searchParams.get("limit") || (mode === "quick5" ? 8 : 30)));
 
-  const cardWhere: Record<string, unknown> = { chapter: { course: { userId: user.id } } };
-  if (chapterId) cardWhere.chapterId = chapterId;
-  if (courseId) (cardWhere.chapter as Record<string, unknown>) = { courseId, course: { userId: user.id } };
+  // All filtering goes through the document → chapter → course chain.
+  const docFilter: Record<string, unknown> = { chapter: { course: { userId: user.id } } };
+  if (documentId) {
+    docFilter.id = documentId;
+  } else if (chapterId) {
+    docFilter.chapterId = chapterId;
+  } else if (courseId) {
+    docFilter.chapter = { courseId, course: { userId: user.id } };
+  }
 
-  // Fetch all candidate cards with their review (if any) for this user
   const cards = await prisma.flashcard.findMany({
-    where: cardWhere as never,
+    where: { document: docFilter as never },
     include: {
-      chapter: { include: { course: true } },
+      document: { include: { chapter: { include: { course: true } } } },
       reviews: { where: { userId: user.id }, take: 1 },
     },
   });
 
   const now = new Date();
 
-  // Score each card for ordering
   type Scored = { card: (typeof cards)[number]; score: number; isDue: boolean; isNew: boolean };
   const scored: Scored[] = cards.map((c) => {
     const r = c.reviews[0];
@@ -45,10 +51,10 @@ export async function GET(request: Request) {
     if (r) {
       const overdueDays = Math.max(0, (now.getTime() - r.dueAt.getTime()) / 86400000);
       score += overdueDays * 10;
-      score += (3 - r.ease) * 5; // harder = higher priority
-      if ((r.lastQuality ?? 5) < 3) score += 20; // recently failed
+      score += (3 - r.ease) * 5;
+      if ((r.lastQuality ?? 5) < 3) score += 20;
     } else {
-      score += 5; // new card
+      score += 5;
     }
     return { card: c, score, isDue, isNew };
   });
@@ -56,14 +62,12 @@ export async function GET(request: Request) {
   let pool: Scored[];
   if (mode === "quick5") {
     pool = scored.filter((s) => s.isDue || s.isNew);
-    // urgent first, then top scores
     pool.sort((a, b) => b.score - a.score);
   } else if (mode === "all") {
     pool = scored.sort((a, b) => b.score - a.score);
   } else {
     pool = scored.filter((s) => s.isDue).sort((a, b) => b.score - a.score);
     if (pool.length < limit) {
-      // top up with new cards
       const fresh = scored.filter((s) => s.isNew && !pool.includes(s));
       pool.push(...fresh.slice(0, limit - pool.length));
     }
@@ -75,8 +79,9 @@ export async function GET(request: Request) {
     answer: card.answer,
     hint: card.hint,
     difficulty: card.difficulty,
-    chapter: { id: card.chapter.id, title: card.chapter.title },
-    course: { id: card.chapter.course.id, title: card.chapter.course.title },
+    document: { id: card.document.id, name: card.document.name },
+    chapter: { id: card.document.chapter.id, title: card.document.chapter.title },
+    course: { id: card.document.chapter.course.id, title: card.document.chapter.course.title },
     review: card.reviews[0]
       ? {
           ease: card.reviews[0].ease,

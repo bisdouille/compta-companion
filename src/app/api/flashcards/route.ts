@@ -2,32 +2,32 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-/** Crée une flashcard custom (champ `custom: true`) attachée à un chapitre. */
+/** Crée une flashcard custom attachée à un document. */
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = (await req.json()) as {
-    chapterId: string;
+    documentId: string;
     question: string;
     answer: string;
     hint?: string;
     difficulty?: "easy" | "medium" | "hard";
   };
 
-  if (!body.chapterId || !body.question?.trim() || !body.answer?.trim()) {
+  if (!body.documentId || !body.question?.trim() || !body.answer?.trim()) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
 
-  const chapter = await prisma.chapter.findFirst({
-    where: { id: body.chapterId, course: { userId: user.id } },
+  const doc = await prisma.document.findFirst({
+    where: { id: body.documentId, chapter: { course: { userId: user.id } } },
     select: { id: true },
   });
-  if (!chapter) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!doc) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const card = await prisma.flashcard.create({
     data: {
-      chapterId: chapter.id,
+      documentId: doc.id,
       question: body.question.trim(),
       answer: body.answer.trim(),
       hint: body.hint?.trim() || null,
