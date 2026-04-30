@@ -31,7 +31,9 @@ export default async function CoursesPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Mes cours</h1>
           <p className="text-muted-foreground">
-            Importe depuis Google Drive et génère fiches + flashcards en un clic.
+            {prefs?.driveRootFolder
+              ? "Tes cours sont enregistrés en local. Clique sur « Mettre à jour » seulement si tu as ajouté de nouveaux fichiers au Drive."
+              : "Connecte un dossier Drive pour démarrer (une seule fois)."}
           </p>
         </div>
         <CoursesActions hasRoot={!!prefs?.driveRootFolder} />

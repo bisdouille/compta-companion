@@ -22,11 +22,35 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async signIn({ user }) {
+      const allowed = process.env.SINGLE_USER_EMAIL?.trim().toLowerCase();
+      if (allowed && user.email?.toLowerCase() !== allowed) {
+        return false;
+      }
+      return true;
+    },
     async session({ session, user }) {
       if (session.user) {
         (session.user as { id?: string }).id = user.id;
       }
       return session;
+    },
+  },
+  events: {
+    async createUser({ user }) {
+      // Pré-remplit le dossier Drive racine si fourni en env
+      const url = process.env.DRIVE_FOLDER_URL?.trim();
+      if (!url) return;
+      const m =
+        url.match(/\/folders\/([a-zA-Z0-9_-]{10,})/) ||
+        url.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+      const folderId = m?.[1] ?? (/^[a-zA-Z0-9_-]{10,}$/.test(url) ? url : null);
+      if (!folderId) return;
+      await prisma.userPreference.upsert({
+        where: { userId: user.id! },
+        create: { userId: user.id!, driveRootFolder: folderId },
+        update: { driveRootFolder: folderId },
+      });
     },
   },
   pages: {

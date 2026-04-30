@@ -1,11 +1,35 @@
 "use client";
 
+import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginPage() {
+  const [error, setError] = useState<string | null>(null);
+
+  async function login() {
+    try {
+      const result = await signIn("google", { callbackUrl: "/dashboard", redirect: true });
+      // Si la redirection ne se déclenche pas, c'est que les env vars sont KO côté serveur.
+      if (result === undefined) {
+        // Vérifie l'API providers — si vide, env vars manquantes
+        const res = await fetch("/api/auth/providers");
+        const providers = await res.json();
+        if (!providers || !providers.google) {
+          setError(
+            "Le provider Google n'est pas configuré. Vérifie GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET et NEXTAUTH_SECRET dans .env.local, puis redémarre `npm run dev`.",
+          );
+        } else {
+          setError("La connexion n'a pas démarré. Ouvre la console (F12) pour voir l'erreur.");
+        }
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-background to-accent/40">
       <Card className="w-full max-w-md">
@@ -13,23 +37,22 @@ export default function LoginPage() {
           <div className="mx-auto h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-2">
             <GraduationCap className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Bienvenue 👋</CardTitle>
-          <CardDescription>
-            Connecte-toi avec ton compte Google. L&apos;app accédera à ton Drive en lecture seule pour
-            importer tes cours.
-          </CardDescription>
+          <CardTitle className="text-2xl">Compta Companion</CardTitle>
+          <CardDescription>Connecte-toi avec ton compte Google pour accéder à tes cours.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button
-            className="w-full"
-            size="lg"
-            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-          >
+          <Button className="w-full" size="lg" onClick={login}>
             <GoogleIcon />
             Continuer avec Google
           </Button>
+          {error ? (
+            <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive flex gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          ) : null}
           <p className="text-xs text-muted-foreground text-center">
-            Tes données restent privées et stockées localement (ou sur ton serveur si tu déploies).
+            Tes données restent stockées localement sur ton ordi.
           </p>
         </CardContent>
       </Card>

@@ -3,10 +3,73 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, FolderSync, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { extractFolderId } from "@/lib/drive-url";
+
+export function DriveSettings({ currentFolderId }: { currentFolderId: string }) {
+  const router = useRouter();
+  const [url, setUrl] = useState(
+    currentFolderId ? `https://drive.google.com/drive/folders/${currentFolderId}` : "",
+  );
+  const [busy, setBusy] = useState(false);
+
+  async function importNow(reSync = false) {
+    const id = extractFolderId(url);
+    if (!id) {
+      toast.error("URL Drive invalide");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/drive/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur");
+      toast.success(reSync ? "Drive synchronisé" : "Dossier importé");
+      router.refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="driveUrl" className="flex items-center gap-1">
+          <Link2 className="h-3 w-3" /> URL du dossier Drive
+        </Label>
+        <Input
+          id="driveUrl"
+          placeholder="https://drive.google.com/drive/folders/..."
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Ouvre ton dossier sur Drive et copie l&apos;URL depuis la barre d&apos;adresse.
+        </p>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <Button onClick={() => importNow(false)} disabled={busy || !url}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {currentFolderId ? "Changer de dossier" : "Importer"}
+        </Button>
+        {currentFolderId ? (
+          <Button variant="outline" onClick={() => importNow(true)} disabled={busy}>
+            <FolderSync className="h-4 w-4" /> Re-synchroniser maintenant
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 type FormValues = {
   dailyGoalMin: number;

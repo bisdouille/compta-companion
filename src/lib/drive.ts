@@ -1,6 +1,8 @@
 import { google, drive_v3 } from "googleapis";
 import { getGoogleAccessToken } from "@/lib/auth";
 
+export { extractFolderId } from "@/lib/drive-url";
+
 const SUPPORTED_MIME = [
   "application/pdf",
   "image/png",

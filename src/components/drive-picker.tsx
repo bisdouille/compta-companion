@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Folder, ChevronRight, Loader2, Home } from "lucide-react";
+import { Folder, ChevronRight, Loader2, Home, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import {
@@ -13,7 +13,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { extractFolderId } from "@/lib/drive-url";
 
 type Crumb = { id: string; name: string };
 type DriveListing = {
@@ -33,8 +35,39 @@ export function DrivePicker({
   const [listing, setListing] = useState<DriveListing | null>(null);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
 
   const current = crumbs[crumbs.length - 1];
+
+  async function importFromUrl() {
+    const id = extractFolderId(urlInput);
+    if (!id) {
+      toast.error("URL invalide. Colle une URL de dossier Google Drive.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const res = await fetch("/api/drive/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur de synchronisation");
+      toast.success(
+        `Import réussi ! ${data.courses.length} cours · ${data.courses.reduce(
+          (a: number, c: { documents: number }) => a + c.documents,
+          0,
+        )} documents`,
+      );
+      onOpenChange(false);
+      router.refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -95,10 +128,36 @@ export function DrivePicker({
         <DialogHeader>
           <DialogTitle>Choisis le dossier de tes cours</DialogTitle>
           <DialogDescription>
-            Navigue dans ton Drive et sélectionne le dossier à importer. Chaque sous-dossier
+            Colle l&apos;URL d&apos;un dossier Drive ou navigue manuellement. Chaque sous-dossier
             deviendra un cours, les sous-sous-dossiers des chapitres.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="space-y-2 rounded-lg border bg-accent/30 p-3">
+          <label className="text-xs font-medium flex items-center gap-1">
+            <Link2 className="h-3 w-3" /> Coller l&apos;URL du dossier (le plus rapide)
+          </label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="https://drive.google.com/drive/folders/..."
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && urlInput) importFromUrl();
+              }}
+            />
+            <Button onClick={importFromUrl} disabled={importing || !urlInput}>
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Importer"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Astuce : sur Drive, ouvre le dossier puis copie l&apos;URL dans la barre d&apos;adresse.
+          </p>
+        </div>
+
+        <div className="text-xs uppercase tracking-wider text-muted-foreground">
+          ou navigue manuellement
+        </div>
 
         <div className="flex items-center gap-1 text-sm text-muted-foreground flex-wrap">
           {crumbs.map((c, i) => (
