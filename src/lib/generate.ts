@@ -91,37 +91,52 @@ export async function generateChapterContent(params: {
     combinedText || "(Pas de texte extrait, utilise les images jointes.)",
   );
 
-  const response = await client.messages.create({
-    model: params.model || DEFAULT_MODEL,
-    max_tokens: 8000,
-    system: [
-      { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-    ] as never,
-    messages: [
-      {
-        role: "user",
-        content: [...imageBlocks, { type: "text", text: userText }] as never,
-      },
-    ],
-  });
+  let response;
+  try {
+    response = await client.messages.create({
+      model: params.model || DEFAULT_MODEL,
+      max_tokens: 8000,
+      system: [
+        { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+      ] as never,
+      messages: [
+        {
+          role: "user",
+          content: [...imageBlocks, { type: "text", text: userText }] as never,
+        },
+      ],
+    });
+  } catch (e) {
+    const err = e as { status?: number; message?: string; error?: { error?: { message?: string } } };
+    const detail = err.error?.error?.message || err.message || "erreur inconnue";
+    throw new Error(`Anthropic API (${err.status ?? "?"}) : ${detail}`);
+  }
 
   const textBlock = response.content.find((b) => b.type === "text");
   if (!textBlock || textBlock.type !== "text") {
     throw new Error("Réponse Claude vide");
   }
   const raw = textBlock.text.trim();
-  // Strip markdown fences if any
-  const cleaned = raw
+
+  // Try to extract JSON even if Claude wraps it in markdown or text
+  let cleaned = raw
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
 
-  let parsed: GeneratedContent;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (e) {
-    throw new Error("JSON invalide retourné par Claude: " + (e as Error).message);
+  // If Claude prepended explanation text, find the first { and last }
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace > 0 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
   }
 
-  return parsed;
+  try {
+    return JSON.parse(cleaned) as GeneratedContent;
+  } catch (e) {
+    console.error("[generate] JSON Claude invalide. Réponse brute:\n", raw.slice(0, 2000));
+    throw new Error(
+      `JSON invalide retourné par Claude: ${(e as Error).message}. Début de la réponse : ${raw.slice(0, 200)}`,
+    );
+  }
 }

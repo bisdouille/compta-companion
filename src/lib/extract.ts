@@ -13,8 +13,11 @@ export async function extractFromBuffer(
   mimeType: string,
 ): Promise<Extraction> {
   if (mimeType === "application/pdf") {
-    // Dynamic import to avoid bundling issues
-    const pdfParse = (await import("pdf-parse")).default;
+    // pdf-parse has a quirk: importing the package index triggers debug code
+    // that tries to read a test fixture. Import the inner module to skip it.
+    // @ts-expect-error inner module has no types
+    const mod = await import("pdf-parse/lib/pdf-parse.js");
+    const pdfParse = mod.default as (b: Buffer) => Promise<{ text: string }>;
     const data = await pdfParse(buffer);
     return { kind: "text", text: data.text || "" };
   }

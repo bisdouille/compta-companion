@@ -25,13 +25,24 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const prefs = await prisma.userPreference.findUnique({ where: { userId: user.id } });
 
+  console.log(
+    `\n🤖 [generate] ${chapter.course.title} → ${chapter.title} (${chapter.documents.length} doc(s))`,
+  );
+
   const extractions: Extraction[] = [];
+  const extractErrors: string[] = [];
   for (const doc of chapter.documents) {
     try {
+      console.log(`   ⬇️  Téléchargement Drive: ${doc.name} (${doc.mimeType})`);
       const buffer = await downloadFile(drive, doc.driveFileId, doc.mimeType);
+      console.log(`   📄 Extraction: ${doc.name} (${buffer.length} bytes)`);
       const ext = await extractFromBuffer(buffer, doc.mimeType);
+      if (ext.kind === "text") {
+        console.log(`   ✓ Texte extrait: ${ext.text.length} caractères`);
+      } else {
+        console.log(`   ✓ Image préparée: ${ext.mediaType}`);
+      }
       extractions.push(ext);
-      // Store extracted text for later (don't store images base64)
       if (ext.kind === "text") {
         await prisma.document.update({
           where: { id: doc.id },
@@ -44,14 +55,23 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         });
       }
     } catch (e) {
-      console.error("Failed to process", doc.name, e);
+      const msg = (e as Error).message;
+      console.error(`   ❌ Échec ${doc.name}: ${msg}`);
+      extractErrors.push(`${doc.name}: ${msg}`);
     }
   }
 
   if (extractions.length === 0) {
-    return NextResponse.json({ error: "extraction_failed" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "extraction_failed",
+        detail: `Aucun document n'a pu être extrait. Erreurs : ${extractErrors.join(" | ")}`,
+      },
+      { status: 500 },
+    );
   }
 
+  console.log(`   🧠 Appel Claude (${prefs?.preferredModel || "claude-sonnet-4-6"})...`);
   let content;
   try {
     content = await generateChapterContent({
@@ -59,9 +79,14 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       extractions,
       model: prefs?.preferredModel,
     });
+    console.log(
+      `   ✓ Claude OK: ${content.flashcards?.length || 0} cartes, ${content.quiz?.length || 0} questions`,
+    );
   } catch (e) {
+    console.error(`   ❌ Erreur Claude:`, e);
+    const msg = (e as Error).message;
     return NextResponse.json(
-      { error: "generation_failed", detail: (e as Error).message },
+      { error: "generation_failed", detail: msg },
       { status: 500 },
     );
   }
